@@ -66,18 +66,18 @@ function updateGadgetCooldown() {
 
 function fixAccessory() {
     const getType = new NativeFunction(base.add(0xAE06B0), "pointer", ["pointer"])
-    Interceptor.attach(base.add(0xBD0ADC), {
+    Interceptor.attach(base.add(0xBD0ADC), { // LogicAccessory::LogicAccessory
         onEnter(args) {
             gadget = readStringObject(getType(args[1]))
             console.log("[* LogicAccessory::LogicAccessory] Gadget created with type: " + gadget)
         }
     })
-    Interceptor.attach(base.add(0xAE06B0), {
+    Interceptor.attach(base.add(0xAE06B0), { // LogicAccessory::getType or smth i forgot its name lmao
         onLeave(retval) {
             if (config.alwaysForceGadget) retval.replace(createStringObject(config.gadgetToForce))
         }
     })
-    Interceptor.replace(base.add(0x5A4F84), new NativeCallback(function(a1, a2, a3) {
+    Interceptor.replace(base.add(0x5A4F84), new NativeCallback(function(a1, a2, a3) { // LogicAccessory::encode
         updateGadgetCooldown();
         bitStreamWritePositiveInt(a2, 0, 1);
         bitStreamWritePositiveVInt(a2, gadgetCooldown, 3);
@@ -87,7 +87,7 @@ function fixAccessory() {
             bitStreamWritePositiveInt(a2, 0, 9);
         }
     }, "void", ["pointer", "pointer", "int"]))
-    Interceptor.attach(base.add(0x83B6E4), {
+    Interceptor.attach(base.add(0x83B6E4), { // LogicAccessory::triggerAccessory
         onEnter(args) {
             console.log("[* LogicAccessory::triggerAccessory] Gadget triggered! Current cooldown: " + gadgetCooldown + ", can gadget be cooled down: " + canCoolDownGadget + ", gadget currently enabled: " + gadgetEnabled + ", gadget type: " + gadget)
             if (gadgetCooldown == 0) {
@@ -109,7 +109,7 @@ function fixAccessory() {
             }
         }
     })
-    Interceptor.attach(base.add(0xE082F4), {
+    Interceptor.attach(base.add(0xE082F4), { // HomePage::startGame
         onEnter(args) {
             gadgetEnabled = false;
             canCoolDownGadget = false;
