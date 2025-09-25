@@ -1,4 +1,5 @@
-// Script by Hallo
+// Script to edit the edit controls brawler in v47
+// By @hallo178
 // https://dsc.gg/candybrawl
 
 const base = Module.getBaseAddress('libg.so');
@@ -8,5 +9,6 @@ function setTrainingCard(card) {
     Memory.protect(base.add(trainingBrawlerCard), card.length, "rw-");
     Memory.writeUtf8String(base.add(trainingBrawlerCard), card);
 }
+
 
 setTrainingCard("Jester")
