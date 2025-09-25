@@ -1,3 +1,7 @@
+// Script to enable china mode in v47 while also bypassing the tencent login
+// By @hallo178
+// https://dsc.gg/candybrawl
+
 const base = Process.getModuleByName("libg.so").base;
 
 const LogicVersionIsChinaBuild = base.add(0x4E915C);
@@ -14,5 +18,6 @@ Interceptor.attach(TencentManagerIsFeatureEnabled, {
         retval.replace(ptr(0))
     }
 });
+
 
 console.log("Injected!");
