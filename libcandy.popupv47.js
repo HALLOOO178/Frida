@@ -31,8 +31,9 @@ function createPopup(title="test", text="popup text", buttonText="button", grayO
     return btn.toInt32()
 }
 
-Interceptor.attach(base.add(0x9D4160), { // Shows a popup whenever a button is pressed
+Interceptor.attach(base.add(0x9D4160), { // Shows a popup whenever a button is pressed (CustomButton::ButtonPressed)
     onEnter(args) {
         createPopup();
     }
+
 })
