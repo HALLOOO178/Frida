@@ -96,7 +96,7 @@ function fixAccessory() {
                 gadgetEnabled = true;
                 gadgetUses += 1
                 if (gadget == "next_attack_change") {
-                    console.log("[* LogicAccessory::triggerAccessory] Attack changed for 5 seconds!")
+                    console.log("[* LogicAccessory::triggerAccessory] Attack changed for 5 seconds!(fake it didnt actually do anything XD)")
                     setTimeout(function() {
                         gadgetEnabled = false;
                         canCoolDownGadget = true;
@@ -119,5 +119,6 @@ function fixAccessory() {
     })
     console.log("[* Candybrawl] Gadgets fixed!")
 }
+
 
 fixAccessory();
