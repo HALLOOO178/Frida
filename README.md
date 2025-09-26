@@ -3,6 +3,8 @@ some cool shit i made for brawl stars v47
 
 i will update this from time to time when i make more cool shit
 
+this scripts can be easily ported to other versions if u can get offsets
+
 https://dsc.gg/candybrawl if we get 99999k members ill upload my debug menu here early btw
 
 if ur gonna use these please credit me
