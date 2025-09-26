@@ -1,3 +1,7 @@
+// Buff adder for v47
+// Made by @hallo178
+// https://dsc.gg/candybrawl
+
 const base = Process.getModuleByName("libg.so").base;
 
 const LogicCharacterServerEncode = base.add(0x86B86C);
@@ -33,5 +37,6 @@ function toggleBuff(buffID, state, offset) {
 
 // Example usage:
 toggleBuff(0, true, buffAddresses.target) // Now everyone will be targeted forever
+
 
 console.log("Injected!");
