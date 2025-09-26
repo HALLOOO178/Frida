@@ -7,6 +7,7 @@
 */
 /* What it doesn't fix:
 - Display remaining uses
+- The gadget's ability itself
 */
 // WARNING: This script doesn't fix gadget's logic on it's own!! It only fixes crashes and adds cooldown logic!
 // https://dsc.gg/candybrawl
@@ -122,3 +123,4 @@ function fixAccessory() {
 
 
 fixAccessory();
+
