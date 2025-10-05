@@ -12,7 +12,7 @@
 
 var config = {
     disableGadgetCooldowns: false, // Self explainatory, disables cooldowns but keeps the maximum amount of uses
-    infiniteGadgets: true, // Keeps the cooldown but makes the uses infinite, just like the new gadgets
+    infiniteGadgets: false, // Keeps the cooldown but makes the uses infinite, just like the new gadgets
     alwaysForceGadget: false, // Only allows to use a specific gadget type
     gadgetToForce: "dash", // Gadget type to always use
     canUseGadget: true, // Disables/Enables the button
@@ -198,4 +198,5 @@ function fixAccessory() {
 }
 
 fixAccessory();
+
 
