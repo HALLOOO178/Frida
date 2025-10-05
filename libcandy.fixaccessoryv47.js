@@ -17,7 +17,7 @@ var config = {
     gadgetToForce: "dash", // Gadget type to always use
     canUseGadget: true, // Disables/Enables the button
     maxGadgetUses: 3, // Maximum amount of gadget uses, the maximum that can be displayed is 7 so anything over it will be shown as 7
-    cooldownLengthMultiplier: 10, // 1 = Default, higher = faster, lower = slower
+    cooldownLengthMultiplier: 1, // 1 = Default, higher = faster, lower = slower
 }
 
 const base = Process.getModuleByName("libg.so").base;
@@ -198,3 +198,4 @@ function fixAccessory() {
 }
 
 fixAccessory();
+
