@@ -12,17 +12,21 @@
 
 var config = {
     disableGadgetCooldowns: false, // Self explainatory, disables cooldowns but keeps the maximum amount of uses
-    infiniteGadgets: false, // Keeps the cooldown but makes the uses infinite, just like the new gadgets
+    infiniteGadgets: true, // Keeps the cooldown but makes the uses infinite, just like the new gadgets
     alwaysForceGadget: false, // Only allows to use a specific gadget type
     gadgetToForce: "dash", // Gadget type to always use
     canUseGadget: true, // Disables/Enables the button
     maxGadgetUses: 3, // Maximum amount of gadget uses, the maximum that can be displayed is 7 so anything over it will be shown as 7
+    cooldownLengthMultiplier: 10, // 1 = Default, higher = faster, lower = slower
 }
 
 const base = Process.getModuleByName("libg.so").base;
 const malloc = new NativeFunction(Process.getModuleByName('libc.so').getExportByName('malloc'), 'pointer', ['uint']);
 
 const stringCtor = new NativeFunction(base.add(0xE1F254), "pointer", ["pointer", "pointer"]);
+
+// Functions to fix gadget structure
+const bitStreamWriteBoolean = new NativeFunction(base.add(0x89068C), "pointer", ["pointer", "bool"]);
 const bitStreamWritePositiveInt = new NativeFunction(base.add(0xC67C68), "pointer", ["pointer", "int", "int"]);
 const bitStreamWritePositiveVInt = new NativeFunction(base.add(0xB3A0F4), "pointer", ["pointer", "int", "int"]);
 
@@ -111,6 +115,12 @@ const Util = {
         ultis.filter(item => item !== skillToRemove);
         const newUlti = this.getRandomItemFromList(ultis)
         return LogicDataTablesGetSkillByName(this.createStringObject(newUlti), 0)
+    },
+    getGadgetType: function(a2) {
+        const getType = new NativeFunction(base.add(0xAE06B0), "pointer", ["pointer"])
+        if (!config.alwaysForceGadget) {
+            return this.readStringObject(getType(a2))
+        } else return config.gadgetToForce
     }
 }
 
@@ -120,7 +130,7 @@ function updateGadgetCooldown() {
     Util.removeFunction(base.add(0x550F00))
     Util.removeFunction(base.add(0x550EFC))
     if (gadgetCooldown >= 1 && canCoolDownGadget) {
-        gadgetCooldown -= 1
+        gadgetCooldown -= config.cooldownLengthMultiplier
     } else {
         if (canCoolDownGadget) gadgetCooldown = 0
     }
@@ -135,20 +145,15 @@ function updateGadgetCooldown() {
 }
 
 function fixAccessory() {
-    const getType = new NativeFunction(base.add(0xAE06B0), "pointer", ["pointer"])
+    
     Interceptor.attach(base.add(0xBD0ADC), {
         onEnter(args) {
-            gadget = Util.readStringObject(getType(args[1]))
+            gadget = Util.getGadgetType(args[1])
             console.log("[* LogicAccessory::LogicAccessory] Gadget created with type: " + gadget + ". Initializing variables")
             gadgetEnabled = false;
             canCoolDownGadget = false;
             gadgetCooldown = 0;
             gadgetUses = 0;
-        }
-    })
-    Interceptor.attach(base.add(0xAE06B0), {
-        onLeave(retval) {
-            if (config.alwaysForceGadget) retval.replace(Util.createStringObject(config.gadgetToForce))
         }
     })
     Interceptor.replace(base.add(0x5A4F84), new NativeCallback(function(a1, a2, a3) {
@@ -193,4 +198,3 @@ function fixAccessory() {
 }
 
 fixAccessory();
-
