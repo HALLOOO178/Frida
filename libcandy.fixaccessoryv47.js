@@ -148,7 +148,7 @@ function fixAccessory() {
     })
     Interceptor.attach(base.add(0xAE06B0), {
         onLeave(retval) {
-            if (config.alwaysForceGadget) retval.replace(createStringObject(config.gadgetToForce))
+            if (config.alwaysForceGadget) retval.replace(Util.createStringObject(config.gadgetToForce))
         }
     })
     Interceptor.replace(base.add(0x5A4F84), new NativeCallback(function(a1, a2, a3) {
@@ -193,3 +193,4 @@ function fixAccessory() {
 }
 
 fixAccessory();
+
