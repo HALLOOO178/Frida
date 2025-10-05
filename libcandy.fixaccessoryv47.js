@@ -68,7 +68,7 @@ const gadgetAbilities = {
         var rotY = logicMathGetRotatedY(100, 100, activeAngle)
         logicCharacterServerTriggerPushback(characterServer, X, rotX, rotY, height, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0)
     },
-    random_ulti: function(characterServer) {
+    random_ulti: function(characterServer) { // This logic is based off another script in this repo, @smp_11 helped me make it
         const skillContainer = characterServer.add(284).readPointer()
         const skillCount = skillContainer.add(8).readInt()
         const skillServer = skillContainer.add(4).readPointer()
@@ -218,3 +218,4 @@ function fixAccessory() {
 }
 
 fixAccessory();
+
