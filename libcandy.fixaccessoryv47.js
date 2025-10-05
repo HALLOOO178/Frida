@@ -5,6 +5,8 @@
 - Getting gadget types
 - Count and display gadget remaining uses
 - Fix dashing gadgets
+- Fix healing gadgets
+- Fix jumping gadgets
 - Fix random ulti(Chester's fist gadget) gadgets
 */
 // WARNING: This script doesn't fix gadget's logic on it's own!! It only fixes crashes and adds cooldown logic!
@@ -13,8 +15,10 @@
 var config = {
     disableGadgetCooldowns: false, // Self explainatory, disables cooldowns but keeps the maximum amount of uses
     infiniteGadgets: false, // Keeps the cooldown but makes the uses infinite, just like the new gadgets
-    alwaysForceGadget: false, // Only allows to use a specific gadget type
-    gadgetToForce: "dash", // Gadget type to always use
+    gadgetForcing: {
+        forceGadget: true, // Should gadgets always be a specific type
+        gadgetToForce: "dash", // Gadget type to always use if forceGadget is true
+    },
     canUseGadget: true, // Disables/Enables the button
     maxGadgetUses: 3, // Maximum amount of gadget uses, the maximum that can be displayed is 7 so anything over it will be shown as 7
     cooldownLengthMultiplier: 1, // 1 = Default, higher = faster, lower = slower
@@ -39,12 +43,15 @@ const logicMathGetRotatedY = new NativeFunction(base.add(0x6D4234), "int", ["int
 const logicAccessoryGetActivationAngle = new NativeFunction(base.add(0x65AA38), "int", ["pointer"]);
 const logicCharacterServerGetMoveAngle = new NativeFunction(base.add(0xB64B70), "int", ["pointer"]);
 
-// Random ulti gadget logic function
+// Random ulti gadget logic functions
 const LogicDataTablesGetSkillByName = new NativeFunction(base.add(0xB14918), "pointer", ["pointer", "int"]);
 const free = new NativeFunction(Process.getModuleByName('libc.so').getExportByName('free'), 'void', ['pointer']);
 const logicSkillServerCtor = new NativeFunction(base.add(0x4C013C), "pointer", ["pointer", "pointer", "int"]);
 const logicSkillServerDctor = new NativeFunction(base.add(0xAC6DD0), "int", ["pointer"]);
 const LogicDataGetValueAt = new NativeFunction(base.add(0x6D8D08), "pointer", ["pointer", "int"]);
+
+// Heal gadget logic functions
+const logicCharacterServerHeal = new NativeFunction(base.add(0xDA30F0), "pointer", ["pointer", "int", "int", "int", "int"]);
 
 var gadget = "dash";
 var gadgetCooldown = 0;
@@ -53,13 +60,13 @@ var gadgetEnabled = false;
 var gadgetUses = 0;
 
 const gadgetAbilities = {
-    dash: function(characterServer) { // PS: This dash logic is pretty bad, feel free to make it better
+    dash: function(characterServer, height=0) { // PS: This dash logic is pretty bad, feel free to make it better
         var activeAngle = logicCharacterServerGetMoveAngle(characterServer)
         var X = logicGameObjectServerGetX(characterServer)
         var Y = logicGameObjectServerGetY(characterServer)
         var rotX = logicMathGetRotatedX(100, 100, activeAngle)
         var rotY = logicMathGetRotatedY(100, 100, activeAngle)
-        logicCharacterServerTriggerPushback(characterServer, X, rotX, rotY, 0, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0)
+        logicCharacterServerTriggerPushback(characterServer, X, rotX, rotY, height, 1, 0, 1, 1, 0, 1, 1, 0, 0, 0)
     },
     random_ulti: function(characterServer) {
         const skillContainer = characterServer.add(284).readPointer()
@@ -76,6 +83,9 @@ const gadgetAbilities = {
         }
         skillContainer.add(8).writeInt(skillCount + 1);
         skillContainer.add(4).writePointer(newSkill)
+    },
+    heal: function(characterServer) {
+        logicCharacterServerHeal(characterServer, 0, 1000, 1, 0);
     }
 }
 
@@ -118,9 +128,9 @@ const Util = {
     },
     getGadgetType: function(a2) {
         const getType = new NativeFunction(base.add(0xAE06B0), "pointer", ["pointer"])
-        if (!config.alwaysForceGadget) {
+        if (!config.gadgetForcing.forceGadget) {
             return this.readStringObject(getType(a2))
-        } else return config.gadgetToForce
+        } else return config.gadgetForcing.gadgetToForce
     }
 }
 
@@ -185,6 +195,16 @@ function fixAccessory() {
                     gadgetAbilities.random_ulti(args[1])
                     gadgetEnabled = false;
                     canCoolDownGadget = true;
+                } else if (gadget == "heal") {
+                    console.log("[* LogicAccessory::triggerAccessory] Healing!")
+                    gadgetAbilities.heal(args[1])
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
+                } else if (gadget == "jump") {
+                    console.log("[* LogicAccessory::triggerAccessory] Jumping!")
+                    gadgetAbilities.dash(args[1], 6)
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
                 }
                 else {
                     console.log("[* LogicAccessory::triggerAccessory] Unknown gadget type: '" + gadget + "', triggering cooldown")
@@ -198,5 +218,3 @@ function fixAccessory() {
 }
 
 fixAccessory();
-
-
