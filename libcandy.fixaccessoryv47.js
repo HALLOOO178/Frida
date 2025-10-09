@@ -9,7 +9,7 @@
 - Fix jumping gadgets
 - Fix random ulti gadgets
 */
-// WARNING: This script doesn't fix gadget's logic on it's own!! It only fixes crashes and adds cooldown logic!
+// WARNING: This script doesn't fix all gadget logic!! It only fixes some of the easier logic i wanted to make
 // https://dsc.gg/candybrawl
 
 var config = {
@@ -17,7 +17,7 @@ var config = {
     infiniteGadgets: false, // Keeps the cooldown but makes the uses infinite, just like the new gadgets
     gadgetForcing: {
         forceGadget: false, // Should gadgets always be a specific type
-        gadgetToForce: "throw_opponent", // Gadget type to always use if forceGadget is true
+        gadgetToForce: "trail", // Gadget type to always use if forceGadget is true
     },
     canUseGadget: true, // Disables/Enables the button
     maxGadgetUses: 7, // Maximum amount of gadget uses, the maximum that can be displayed is 7 so anything over it will be shown as 7
@@ -29,9 +29,12 @@ var config = {
         item_area_trigger: 1,
         jump: 1,
         heal: 1,
+        trail: 1,
+        repeat_area: 1,
         unknown: 1
     },
     throwOpponentRange: 500, // Range of the throw_opponent type gadgets
+    executeFunctionOnUnknownGadget: true, // Executes a dummy function if an unknown gadget is activated
 }
 
 const base = Process.getModuleByName("libg.so").base;
@@ -40,6 +43,11 @@ const free = new NativeFunction(Process.getModuleByName('libc.so').getExportByNa
 
 const stringCtor = new NativeFunction(base.add(0xE1F254), "pointer", ["pointer", "pointer"]);
 const logicCharacterServerGetClosestEnemy = new NativeFunction(base.add(0x306420), "pointer", ["pointer", "int", "int", "int", "int", "int", "int", "int", "int"]);
+
+// Functions to get gadget data
+const logicAccessoryDataGetCustomValue1 = new NativeFunction(base.add(0xAEF3EC), "pointer", ["pointer"]);
+const logicAccessoryDataGetSubType = new NativeFunction(base.add(0xDDF17C), "pointer", ["pointer"]);
+const logicCharacterServerIsAlive = new NativeFunction(base.add(0xBC2294), "bool", ["pointer"]);
 
 // Functions to fix gadget structure
 const bitStreamWriteBoolean = new NativeFunction(base.add(0x89068C), "pointer", ["pointer", "bool"]);
@@ -74,23 +82,31 @@ const gameObjectManagerServerAddLogicGameObject = new NativeFunction(base.add(0x
 const logicAreaEffectServerTrigger = new NativeFunction(base.add(0x270CD4), "pointer", ["pointer"]);
 const logicGameObjectServerGetLogicBattleModeServer = new NativeFunction(base.add(0x38387C), "pointer", ["pointer"]);
 
-// Reload gadget logic functions
+// Reload gadget logic function
 const logicSkillServerAddCharge = new NativeFunction(base.add(0xB3F6C0), "pointer", ["pointer", "pointer", "int"]);
+
+// Repeat shot gadget logic functions
+const logicProjectileServerShootProjectile = new NativeFunction(base.add(0xB8F710), "pointer", ["int", "int", "pointer", "pointer", "pointer", "int", "int", "int", "int", "bool", "int", "pointer", "int", "int"]);
+const logicProjectileServerRunEarlyTicks = new NativeFunction(base.add(0x6A6F70), "pointer", ["pointer"]);
 
 var gadget = "dash";
 var gadgetCooldown = 0;
 var canCoolDownGadget = false;
 var gadgetEnabled = false;
 var gadgetUses = 0;
-var ActiveX = 0;
-var ActiveY = 0;
+var accessoryData = {
+    type: "dash",
+    cusValue1: "",
+    subType: 0
+}
 
 const gadgetAbilities = {
-    dash: function(characterServer, height=0, disableCollisions=0, isReversed=false) { // PS: This dash logic is pretty bad, feel free to make it better
+    dash: function(characterServer, height=0, disableCollisions=0, isReversed=false, spawnMine=true) { // PS: This dash logic is pretty bad, feel free to make it better
         var activeAngle = logicCharacterServerGetMoveAngle(characterServer)
         var X = logicGameObjectServerGetX(characterServer)
         var rotX = logicMathGetRotatedX(100, 0, activeAngle)
         var rotY = logicMathGetRotatedY(100, 0, activeAngle)
+        if (spawnMine) gameLogic.spawnAOE(characterServer, "ClusterBombDashMine")
         if (isReversed) {
             rotX = -rotX
             rotY = -rotY
@@ -114,15 +130,25 @@ const gadgetAbilities = {
         skillContainer.add(4).writePointer(newSkill)
     },
     heal: function(characterServer) {
-        gameLogic.heal(characterServer, 1000)
+        if (accessoryData.subType == 1) {
+            gameLogic.heal(characterServer, accessoryData.cusValue1.toInt32());
+        } else {
+            function heal() {
+                gameLogic.heal(characterServer, accessoryData.cusValue1.toInt32());
+            }
+            Util.loopWithInterval(heal, 3, 1000);
+        }
     },
     spawn: function(characterServer) {
-        const closestEnemy = gameLogic.getClosestEnemy(characterServer)
-        const POS = [logicGameObjectServerGetX(closestEnemy), logicGameObjectServerGetY(closestEnemy)]
-        gameLogic.spawnAOE(characterServer, "LuchadorMeteorSpawn", POS[0], POS[1]);
-        setTimeout(function() {
-            gameLogic.spawnAOE(characterServer, "LuchadorMeteorExplosion", POS[0], POS[1]);
-        }, 2500)
+        if (accessoryData.subType == 4) {
+            const closestEnemy = gameLogic.getClosestEnemy(characterServer)
+            if (closestEnemy.isNull()) return;
+            const POS = [logicGameObjectServerGetX(closestEnemy), logicGameObjectServerGetY(closestEnemy)]
+            gameLogic.spawnAOE(characterServer, accessoryData.cusValue1, POS[0], POS[1]);
+            setTimeout(function() {
+                gameLogic.spawnAOE(characterServer, "LuchadorMeteorExplosion", POS[0], POS[1]);
+            }, 2500)
+        }
     },
     jump: function(characterServer, usAOE=false) {
         this.dash(characterServer, 1000, 1);
@@ -133,10 +159,23 @@ const gadgetAbilities = {
     },
     throw_opponent: function(characterServer) { // This type is broken when used with el primo... 😭 I'll try to fix it edventually, I have other priorities right now
         const closestEnemy = gameLogic.getClosestEnemy(characterServer)
+        if (closestEnemy.isNull()) return;
         const activeAngle = logicCharacterServerGetMoveAngle(characterServer) * -1
         var X = logicMathGetRotatedX(100, 0, activeAngle)
         var Y = logicMathGetRotatedY(100, 0, activeAngle)
         if (X * -1 <= config.throwOpponentRange && Y * -1 <= config.throwOpponentRange) logicCharacterServerTriggerPushback(closestEnemy, logicGameObjectServerGetX(closestEnemy), X, Y, 1, 1, 0, 1, 0, 0, 1, 0, 0, 0, 0)
+    },
+    trail: function(characterServer) {
+        function giveTrail() {
+            gameLogic.spawnAOE(characterServer, "WhirlwindTrail");
+        }
+        Util.loopWithInterval(giveTrail, 10, 300)
+    },
+    repeat_area: function(characterServer) { // Doesn't work
+        gameLogic.spawnAOE(characterServer, "CactusAccessoryExplosion")
+    },
+    unknown: function(characterServer) {
+        gameLogic.kill(characterServer)
     }
 }
 
@@ -160,7 +199,13 @@ const gameLogic = {
         logicCharacterServerHeal(characterServer, 0, amount, 1, 0);
     },
     getClosestEnemy: function(characterServer) {
-        return logicCharacterServerGetClosestEnemy(characterServer, 35, 0, 0, 0, 0, 0, 0, 0)
+        return logicCharacterServerGetClosestEnemy(characterServer, 35, 0, 0, 0, 0, 0, 0, 0);
+    },
+    kill: function(characterServer) {
+        characterServer.add(144).writeS32(0)
+    },
+    isAlive: function(characterServer) {
+        return true; // logicCharacterServerIsAlive(characterServer)
     }
 }
 
@@ -201,11 +246,15 @@ const Util = {
         const newUlti = this.getRandomItemFromList(ultis)
         return LogicDataTablesGetSkillByName(this.createStringObject(newUlti), 0)
     },
-    getGadgetType: function(a2) {
-        const getType = new NativeFunction(base.add(0xAE06B0), "pointer", ["pointer"])
-        if (!config.gadgetForcing.forceGadget) {
-            return this.readStringObject(getType(a2))
-        } else return config.gadgetForcing.gadgetToForce
+    loopWithInterval: function(func, iterations, intervalLength) {
+        var loopCount = 0
+        const Interval = setInterval(function() {
+            loopCount++
+            func();
+            if (loopCount >= iterations) {
+                clearInterval(Interval)
+            }
+        }, intervalLength)
     }
 }
 
@@ -216,58 +265,77 @@ const LogicAccessory = {
             canCoolDownGadget = false;
             gadgetEnabled = true;
             gadgetUses += 1
-            if (gadget == "dash") {
-                console.log("[* LogicAccessory::triggerAccessory] Dashing!")
-                gadgetAbilities.dash(characterServer)
-                gadgetEnabled = false;
-                canCoolDownGadget = true;
-            } else if (gadget == "random_ulti") {
-                console.log("[* LogicAccessory::triggerAccessory] Getting random ulti!")
-                gadgetAbilities.random_ulti(characterServer)
-                gadgetEnabled = false;
-                canCoolDownGadget = true;
-            } else if (gadget == "heal") {
-                console.log("[* LogicAccessory::triggerAccessory] Healing!")
-                gadgetAbilities.heal(characterServer)
-                gadgetEnabled = false;
-                canCoolDownGadget = true;
-            } else if (gadget == "jump") {
-                console.log("[* LogicAccessory::triggerAccessory] Jumping!")
-                gadgetAbilities.jump(characterServer, true)
-                gadgetEnabled = false;
-                canCoolDownGadget = true;
-            } else if (gadget == "spawn") {
-                console.log("[* LogicAccessory::triggerAccessory] Spawning AOE!")
-                gadgetAbilities.spawn(characterServer)
-                gadgetEnabled = false;
-                canCoolDownGadget = true;
-            } else if (gadget == "item_area_trigger") {
-                console.log("[* LogicAccessory::triggerAccessory] Triggering AOE!")
-                gadgetAbilities.item_area_trigger(characterServer)
-                gadgetEnabled = false;
-                canCoolDownGadget = true;
-            } else if (gadget == "throw_opponent") {
-                console.log("[* LogicAccessory::triggerAccessory] Throwing closest opponent!")
-                gadgetAbilities.throw_opponent(characterServer)
-                gadgetEnabled = false;
-                canCoolDownGadget = true;
-            }
-            else {
-                console.log("[* LogicAccessory::triggerAccessory] Unknown gadget type: '" + gadget + "', triggering cooldown")
-                gadgetEnabled = false;
-                canCoolDownGadget = true;
+            switch (gadget) {
+                case "dash":
+                    console.log("[* LogicAccessory::activateAccessory] Dashing!");
+                    gadgetAbilities.dash(characterServer, 0, 0, false);
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
+                    break;
+                case "random_ulti":
+                    console.log("[* LogicAccessory::activateAccessory] Getting random ulti!")
+                    gadgetAbilities.random_ulti(characterServer)
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
+                    break;
+                case "heal":
+                    console.log("[* LogicAccessory::activateAccessory] Healing " + accessoryData.cusValue1.toInt32() + " HP!");
+                    gadgetAbilities.heal(characterServer)
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
+                    break;
+                case "jump":
+                    console.log("[* LogicAccessory::activateAccessory] Jumping!");
+                    gadgetAbilities.jump(characterServer, true);
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
+                    break;
+                case "spawn":
+                    console.log("[* LogicAccessory::activateAccessory] Spawning AOE!");
+                    gadgetAbilities.spawn(characterServer);
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
+                    break;
+                case "item_area_trigger":
+                    console.log("[* LogicAccessory::activateAccessory] Triggering AOE!");
+                    gadgetAbilities.item_area_trigger(characterServer);
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
+                    break;
+                case "throw":
+                    console.log("[* LogicAccessory::activateAccessory] Throwing closest opponent!");
+                    gadgetAbilities.throw_opponent(characterServer);
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
+                    break;
+                case "trail":
+                    console.log("[* LogicAccessory::activateAccessory] Spawning trail!");
+                    gadgetAbilities.trail(characterServer);
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
+                    break;
+                case "repeat_area":
+                    console.log("[* LogicAccessory::activateAccessory] Repeating area!");
+                    gadgetAbilities.repeat_area(characterServer);
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
+                    break;
+                default:
+                    console.log("[* LogicAccessory::activateAccessory] Unknown gadget type: '" + gadget + "'.")
+                    if (config.executeFunctionOnUnknownGadget) gadgetAbilities.unknown(characterServer)
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
+                    break;
             }
         }
     },
-    updateAccessory: function() {
+    updateAccessory: function(characterServer) {
         var usesLeft = config.maxGadgetUses - gadgetUses
         Util.removeFunction(base.add(0x550F04))
         var cooldownMultipler = config.cooldownLengthMultipliers.unknown
         if (gadget in config.cooldownLengthMultipliers) cooldownMultipler = config.cooldownLengthMultipliers[gadget]
-        if (gadgetCooldown >= 1 && canCoolDownGadget) {
+        if (gadgetCooldown >= 1 && canCoolDownGadget && gameLogic.isAlive(characterServer)) {
             gadgetCooldown -= cooldownMultipler
-        } else {
-            if (canCoolDownGadget) gadgetCooldown = 0
         }
         if (config.infiniteGadgets) gadgetUses = 0
         if (config.disableGadgetCooldowns) gadgetCooldown = 0
@@ -287,22 +355,37 @@ const LogicAccessory = {
             data.inUse = 1
         }
         return data
-    }
+    },
+    getCustomValue1: function(accessory) {
+        return logicAccessoryDataGetCustomValue1(accessory);
+    },
+    getSubType: function(accessory) {
+        return logicAccessoryDataGetSubType(accessory).toInt32()
+    },
+    getGadgetType: function(accessory) {
+        const getType = new NativeFunction(base.add(0xAE06B0), "pointer", ["pointer"])
+        if (!config.gadgetForcing.forceGadget) {
+            return Util.readStringObject(getType(accessory))
+        } else return config.gadgetForcing.gadgetToForce
+    },
 }
 
 function fixAccessory() {
     Interceptor.attach(base.add(0xBD0ADC), { // LogicAccessory::LogicAccessory
         onEnter(args) {
-            gadget = Util.getGadgetType(args[1])
-            console.log("[* LogicAccessory::LogicAccessory] Gadget created with type: " + gadget + ". Initializing variables")
+            gadget = LogicAccessory.getGadgetType(args[1])
             gadgetEnabled = false;
             canCoolDownGadget = false;
             gadgetCooldown = 0;
             gadgetUses = 0;
+            accessoryData.cusValue1 = LogicAccessory.getCustomValue1(args[1])
+            accessoryData.subType = LogicAccessory.getSubType(args[1])
+            accessoryData.type = LogicAccessory.getGadgetType(args[1])
+            console.log("[* LogicAccessory::LogicAccessory] Gadget created with type: " + gadget + " and subtype: " + accessoryData.subType)
         }
     })
     Interceptor.replace(base.add(0x5A4F84), new NativeCallback(function(a1, a2, a3) { // LogicAccessory::encode
-        const data = LogicAccessory.updateAccessory();
+        const data = LogicAccessory.updateAccessory(a1);
         bitStreamWriteBoolean(a2, 0);
         bitStreamWritePositiveVInt(a2, data.cooldown, 3);
         bitStreamWritePositiveVInt(a2, data.inUse, 4); // State
