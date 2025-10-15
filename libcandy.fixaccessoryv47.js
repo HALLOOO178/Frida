@@ -144,7 +144,7 @@ const gadgetAbilities = {
             const closestEnemy = gameLogic.getClosestEnemy(characterServer)
             if (closestEnemy.isNull()) return;
             const POS = [logicGameObjectServerGetX(closestEnemy), logicGameObjectServerGetY(closestEnemy)]
-            gameLogic.spawnAOE(characterServer, accessoryData.cusValue1, POS[0], POS[1]);
+            gameLogic.spawnAOE(characterServer, "LuchadorMeteorSpawn", POS[0], POS[1]);
             setTimeout(function() {
                 gameLogic.spawnAOE(characterServer, "LuchadorMeteorExplosion", POS[0], POS[1]);
             }, 2500)
@@ -405,3 +405,4 @@ function fixAccessory() {
 }
 
 fixAccessory();
+
