@@ -8,6 +8,14 @@ const malloc = new NativeFunction(Process.getModuleByName('libc.so').getExportBy
 const localizationGetString = base.add(0xD7FDB8);
 const stringCtor = new NativeFunction(base.add(0xE1F254), "pointer", ["pointer", "pointer"]);
 
+function readStringObject(pointer) {
+    var len = pointer.add(4).readInt()
+    if (len >= 8) {
+        return pointer.add(8).readPointer().readUtf8String(len)
+    }
+    return pointer.add(8).readUtf8String(len)
+}
+
 function createStringObject(txt) {
     const sptr = Memory.allocUtf8String(txt);
     const ptr = malloc(200);
