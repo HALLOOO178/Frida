@@ -1,5 +1,6 @@
 // Debug menu for v47
 // Made by @hallo178
+// Help by natesworks
 // https://dsc.gg/candybrawl
 
 // PS: This is just a very old version I found that's apparently from august or something, so don't expect it to be any good since I was still learning frida and js back then
@@ -161,4 +162,5 @@ Interceptor.attach(customButtonPressed,
 )
 
 console.log("[* Candybrawl] Script loaded! By https://dsc.gg/candybrawl")
+
 createDebugFile();
