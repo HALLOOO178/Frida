@@ -2,6 +2,12 @@
 // Made by @hallo178
 // https://dsc.gg/candybrawl
 
+var debugMenuConfig = {
+    title: "Debug Menu",
+    searchMenuTitle: "Search",
+    maxSearchFieldInputLength: 320
+}
+
 var settings = {
     chinaMode: false,
     infiniteUlti: false
@@ -22,6 +28,8 @@ const TencentManagerIsFeatureEnabled = base.add(0x38A598);
 const YoozooManagerIsEnabled = base.add(0x514B00);
 const isChinaBuild = base.add(0x4E915C);
 
+const movieClipGetTextFieldByName = new NativeFunction(base.add(0x58C26C), "pointer", ["pointer", "pointer"]);
+const textFieldSetText = new NativeFunction(base.add(0x44E9B8), "pointer", ["pointer", "pointer"]);
 const gameMainInit = new NativeFunction(base.add(0x848085), 'void', ['pointer']);
 const addFile = new NativeFunction(resourceListererAddFile, "int", ["pointer", "pointer", "int", "int", "int", "int", "int"]);
 const gameButtonSetText = new NativeFunction(base.add(0x4DA5DC), "int", ["pointer", "pointer", "bool"]);
@@ -43,10 +51,17 @@ const scrollAreaAddContent = new NativeFunction(base.add(0xB662E0), "pointer", [
 const scrollAreaUpdate = new NativeFunction(base.add(0xB9C9B4), "pointer", ["pointer", "float"])
 const scrollAreaUpdateBounds = new NativeFunction(base.add(0x8C59F4), "pointer", ["pointer"]);
 const displayObjectSetScale = new NativeFunction(base.add(0x4588B8), "pointer", ["pointer", "float"]);
+const spriteAddChild = new NativeFunction(base.add(0xD9F0D0), "pointer", ["pointer", "pointer"]);
 const spriteRemoveChild = new NativeFunction(base.add(0x358120), "void", ["pointer", "pointer"]);
 const displayObjectSetPixelSnappedXY = new NativeFunction(base.add(0x8A42E8), "pointer", ["pointer", "float", "float"]);
 const logicCharacterServerUltiUsed = new NativeFunction(base.add(0x8511F8), "pointer", ["pointer"]);
 const gameMainReloadGame = new NativeFunction(base.add(0xCEF33C), "void", ["pointer"]);
+const inputFieldInputField = new NativeFunction(base.add(0xBA1BD0), "pointer", ["pointer", "pointer"]);
+const textInputSetMaxTextLength = new NativeFunction(base.add(0x44FB0C), "pointer", ["pointer", "int"]);
+const movieClipGetMovieClipByName = new NativeFunction(base.add(0x878B04), "pointer", ["pointer", "pointer"]);
+const textFieldFetchFont = new NativeFunction(base.add(0xCFE2E8), "pointer", ["pointer"]);
+const inputFieldActivate = new NativeFunction(base.add(0xBDE5E8), "pointer", ["pointer", "bool"]);
+const inputFieldUpdate = new NativeFunction(base.add(0xE4B228), "pointer", ["pointer"]);
 
 const String = {
     ptr(str) {
@@ -56,6 +71,13 @@ const String = {
         var mem = malloc(128);
         stringCtor(mem, String.ptr(str));
         return mem;
+    },
+    read(ptr) {
+        var len = ptr.add(4).readInt()
+        if (len >= 8) {
+            return ptr.add(8).readPointer().readUtf8String(len)
+        }
+        return ptr.add(8).readUtf8String(len)
     }
 }
 
@@ -107,6 +129,12 @@ const GUI = {
     scrollAreaRemoveChild(obj) {
         spriteRemoveChild(debugMenu.buttonArea.add(84).readPointer(), obj);
         scrollAreaUpdateBounds(debugMenu.buttonArea);
+    },
+    spriteAddChild(movieclip, obj) {
+        spriteAddChild(movieclip, obj)
+    },
+    spriteRemoveChild(movieclip, obj) {
+        spriteRemoveChild(movieclip, obj)
     }
 }
 
@@ -124,7 +152,7 @@ function loadSC(scName) {
 
 function spawnItem(item, text, x, y, scFile="sc/debug.sc", movieClipFrame=-1) {
     var hasButtonAnimation = 0
-    if (!["debug_menu"].includes(item)) hasButtonAnimation = 1
+    if (!["debug_menu", "debug_input_window"].includes(item)) hasButtonAnimation = 1
     console.log(`[* Debug] Spawning item! Type: ${item}, Text: ${text}, Position: (${x}, ${y}), Is button: ${hasButtonAnimation}`)
     var memory = malloc(700);
     gameButtonConstructor(memory);
@@ -134,6 +162,15 @@ function spawnItem(item, text, x, y, scFile="sc/debug.sc", movieClipFrame=-1) {
     gameButtonSetText(memory, String.ctor(text), 1);
     if (movieClipFrame != -1) movieClipGotoAndStopAtFrameIndex(movieClip, movieClipFrame);
     return [memory, movieClip];
+}
+
+function spawnButtonFromMovieclip(baseMovieclip, movieclip) {
+    var BTN = malloc(500)
+    var btnMovieclip = movieClipGetMovieClipByName(baseMovieclip.add(76).readPointer(), String.ptr(movieclip));
+    gameButtonConstructor(BTN);
+    customButtonSetMovieClip(BTN, btnMovieclip, 1);
+    GUI.spriteAddChild(baseMovieclip, BTN);
+    return BTN
 }
 
 var debugMenu = {
@@ -146,22 +183,37 @@ var debugMenu = {
     hasSpawnedOpenBtn: false,
     scrollAreaUpdater: null,
     debugOpen: false,
+    inputOpen: false,
+    inputFieldText: "",
     allBTNS: [],
+    searchMenu: [],
     show() {
         debugMenu.ctor();
+        debugMenu.spawnDebugOptions();
+        debugMenu.debugOpen = true;
+    },
+    spawnDebugOptions() {
+        debugMenu.clearDebugMenu();
         debugMenu.createDebugCategory("Main");
         debugMenu.createAndAddButton("Reload", DebugFuncs.reload, [], "Main", {type: "default"});
         debugMenu.createAndAddButton("Toggle China mode", DebugFuncs.toggleChinaMode, [], "Main", {type: "onoff", state: settings.chinaMode});
         debugMenu.createDebugCategory("Battle");
         debugMenu.createAndAddButton("Infinite ulti", DebugFuncs.toggleInfiniteUlti, [], "Battle", {type: "onoff", state: settings.infiniteUlti});
-        debugMenu.debugOpen = true;
     },
     ctor() {
         debugMenu.showingBTNsCount = 0;
         debugMenu.categories = {};
         debugMenu.allBTNS = [];
+        debugMenu.inputOpen = false;
+        debugMenu.inputFieldText = "";
 
         debugMenu.menu = spawnItem("debug_menu", "Debug Menu", 1200, 0)[0];
+        debugMenu.closeButton = spawnButtonFromMovieclip(debugMenu.menu, "close_button");
+        debugMenu.startInputButton = spawnItem("nothing", "Input", 1070, 50)[0];
+        var titleField = movieClipGetTextFieldByName(debugMenu.menu.add(72).readPointer(), String.ptr("title"));
+        var searchField = movieClipGetTextFieldByName(debugMenu.menu.add(72).readPointer(), String.ptr("search_help"));
+        textFieldSetText(titleField, String.ctor(debugMenuConfig.title));
+        textFieldSetText(searchField, String.ctor("Search"));
 
         debugMenu.buttonArea = malloc(2000);
         scrollAreaCtor(debugMenu.buttonArea, 600, 550, 1);
@@ -174,10 +226,18 @@ var debugMenu = {
 
         GUI.stageAddChild(debugMenu.menu);
         GUI.stageAddChild(debugMenu.buttonArea);
+        GUI.stageAddChild(debugMenu.startInputButton);
 
         debugMenu.scrollAreaUpdater = Interceptor.attach(GUIUpdate, {
             onLeave(retval) {
                 scrollAreaUpdate(debugMenu.buttonArea, 20);
+            }
+        });
+
+        Interceptor.attach(customButtonPressed, {
+            onEnter(args) {
+                if (args[0].toInt32() == debugMenu.closeButton.toInt32()) debugMenu.closeDebugMenu();
+                if (args[0].toInt32() == debugMenu.startInputButton.toInt32()) debugMenu.setupDebugInputField();
             }
         });
 
@@ -234,7 +294,8 @@ var debugMenu = {
             IDX: debugMenu.allBTNS.length,
             instance: category,
             relyOn: "nothing",
-            catName: name
+            catName: name,
+            name: name
         });
     },
     addButtonToCategory(cat, btn) {
@@ -244,27 +305,28 @@ var debugMenu = {
     createDebugButton(txt, callback, args, cat, metadata) {
         debugMenu.categories[cat].createdBtns++;
         var BTN = spawnItem("debug_menu_item", txt, 150, debugMenu.categories[cat].Y * debugMenu.categories[cat].createdBtns);
-        if (metadata.type == "onoff") gameButtonSetText(BTN[0], String.ctor(txt + (metadata.state ? "| ON" : "| OFF")), 1);
+        if (metadata.type == "onoff") gameButtonSetText(BTN[0], String.ctor(txt + (metadata.state ? " | ON" : " | OFF")), 1);
         Interceptor.attach(customButtonPressed, {
             onEnter(invokargs) {
                 if (invokargs[0].toInt32() == BTN[0].toInt32()) {
                     switch (metadata.type) {
-                        case "default":
-                            callback(...args);
-                            break;
                         case "onoff":
                             metadata.state = !metadata.state;
-                            gameButtonSetText(BTN[0], String.ctor(txt + (metadata.state ? "| ON" : "| OFF")), 1);
-                            callback(...args);
+                            gameButtonSetText(BTN[0], String.ctor(txt + (metadata.state ? " | ON" : " | OFF")), 1);
                             break;
                     }
+                    callback(...args)
                 }
             }
         });
         debugMenu.allBTNS.push({
             IDX: debugMenu.allBTNS.length,
             instance: BTN,
-            relyOn: cat
+            relyOn: cat,
+            name: txt,
+            callback: callback,
+            args: args,
+            meta: metadata
         })
         return BTN[0];
     },
@@ -288,10 +350,60 @@ var debugMenu = {
             }
         }
     },
+    setupDebugInputField() {
+        if (debugMenu.inputOpen) return debugMenu.closeInputField()
+        var textInput = malloc(300);
+        debugMenu.input = spawnItem("debug_input_window", "Search", 600, 100, "sc/debug.sc")[0];
+        debugMenu.inputCloseBTN = spawnButtonFromMovieclip(debugMenu.input, "close_button");
+        var titleField = movieClipGetTextFieldByName(debugMenu.input.add(72).readPointer(), String.ptr("Title"));
+        debugMenu.inputField = movieClipGetTextFieldByName(debugMenu.input.add(72).readPointer(), String.ptr("input_field"));
+        textFieldSetText(titleField, String.ctor(debugMenuConfig.searchMenuTitle));
+        textFieldFetchFont(debugMenu.inputField);
+        inputFieldInputField(textInput, debugMenu.inputField);
+        textInputSetMaxTextLength(textInput, debugMenuConfig.maxSearchFieldInputLength);
+        GUI.stageAddChild(debugMenu.input);
+        Interceptor.attach(customButtonPressed, {
+            onEnter(args) {
+                if (args[0].toInt32() == debugMenu.inputCloseBTN.toInt32()) debugMenu.closeInputField();
+                if (args[0].toInt32() == debugMenu.input.toInt32()) {
+                    debugMenu.hookInputUpdate(textInput);
+                    inputFieldActivate(textInput, 1);
+                }
+            }
+        });
+        debugMenu.inputOpen = true;
+    },
+    hookInputUpdate(field) {
+        debugMenu.inputUpdate = Interceptor.attach(GUIUpdate, {
+            onLeave(retval) {
+                inputFieldUpdate(field);
+                debugMenu.inputFieldText = String.read(field.add(56));
+            }
+        });
+    },
+    closeInputField() {
+        GUI.stageRemoveChild(debugMenu.input);
+        debugMenu.inputUpdate.detach();
+        if (debugMenu.inputFieldText != "") {
+            debugMenu.inputFieldText = "";
+            debugMenu.spawnDebugOptions();
+        }
+        debugMenu.inputOpen = false;
+    },
+    clearDebugMenu() {
+        for (let btn of debugMenu.allBTNS) {
+            GUI.scrollAreaRemoveChild(btn.instance[0]);
+        }
+        for (let btn of debugMenu.searchMenu) {
+            GUI.scrollAreaRemoveChild(btn.btn);
+        }
+    },
     closeDebugMenu() {
         debugMenu.scrollAreaUpdater.detach();
         GUI.stageRemoveChild(debugMenu.buttonArea);
         GUI.stageRemoveChild(debugMenu.menu);
+        GUI.stageRemoveChild(debugMenu.startInputButton);
+        if (debugMenu.inputOpen) debugMenu.closeInputField();
         debugMenu.debugOpen = false;
     }
 }
