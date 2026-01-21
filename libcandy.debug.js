@@ -187,6 +187,7 @@ var debugMenu = {
     inputFieldText: "",
     allBTNS: [],
     searchMenu: [],
+    oldInp: "",
     show() {
         debugMenu.ctor();
         debugMenu.spawnDebugOptions();
@@ -200,12 +201,16 @@ var debugMenu = {
         debugMenu.createDebugCategory("Battle");
         debugMenu.createAndAddButton("Infinite ulti", DebugFuncs.toggleInfiniteUlti, [], "Battle", {type: "onoff", state: settings.infiniteUlti});
     },
-    ctor() {
+    init() {
+        if (debugMenu.allBTNS.length > 0) debugMenu.btnData = debugMenu.allBTNS;
         debugMenu.showingBTNsCount = 0;
         debugMenu.categories = {};
         debugMenu.allBTNS = [];
         debugMenu.inputOpen = false;
         debugMenu.inputFieldText = "";
+    },
+    ctor() {
+        debugMenu.init()
 
         debugMenu.menu = spawnItem("debug_menu", "Debug Menu", 1200, 0)[0];
         debugMenu.closeButton = spawnButtonFromMovieclip(debugMenu.menu, "close_button");
@@ -213,7 +218,7 @@ var debugMenu = {
         var titleField = movieClipGetTextFieldByName(debugMenu.menu.add(72).readPointer(), String.ptr("title"));
         var searchField = movieClipGetTextFieldByName(debugMenu.menu.add(72).readPointer(), String.ptr("search_help"));
         textFieldSetText(titleField, String.ctor(debugMenuConfig.title));
-        textFieldSetText(searchField, String.ctor("Search"));
+        textFieldSetText(searchField, String.ctor("Type here to search..."));
 
         debugMenu.buttonArea = malloc(2000);
         scrollAreaCtor(debugMenu.buttonArea, 600, 550, 1);
@@ -295,7 +300,8 @@ var debugMenu = {
             instance: category,
             relyOn: "nothing",
             catName: name,
-            name: name
+            name: name,
+            type: "cat"
         });
     },
     addButtonToCategory(cat, btn) {
@@ -315,7 +321,7 @@ var debugMenu = {
                             gameButtonSetText(BTN[0], String.ctor(txt + (metadata.state ? " | ON" : " | OFF")), 1);
                             break;
                     }
-                    callback(...args)
+                    callback(...args);
                 }
             }
         });
@@ -326,9 +332,39 @@ var debugMenu = {
             name: txt,
             callback: callback,
             args: args,
-            meta: metadata
-        })
+            meta: metadata,
+            type: "btn"
+        });
         return BTN[0];
+    },
+    createSearchResultBTN(name, callback, args, metadata) {
+        debugMenu.showingBTNsCount++;
+        var BTN = spawnItem("debug_menu_item", name, 150, 55 * debugMenu.showingBTNsCount);
+        if (metadata.type == "onoff") gameButtonSetText(BTN[0], String.ctor(name + (metadata.state ? " | ON" : " | OFF")), 1);
+        GUI.scrollAreaAddChild(BTN[0]);
+        Interceptor.attach(customButtonPressed, {
+            onEnter(iargs) {
+                if (iargs[0].toInt32() == BTN[0].toInt32()) {
+                    switch (metadata.type) {
+                        case "onoff":
+                            metadata.state = !metadata.state;
+                            gameButtonSetText(BTN[0], String.ctor(name + (metadata.state ? " | ON" : " | OFF")), 1);
+                            break;
+                    }
+                    callback(...args);
+                }
+            }
+        });
+        debugMenu.searchMenu.push({
+            IDX: debugMenu.allBTNS.length,
+            instance: BTN,
+            relyOn: "nothing",
+            name: name,
+            callback: callback,
+            args: args,
+            meta: metadata,
+            type: "btn"
+        });
     },
     createAndAddButton(txt, callback, args, cat, metadata) {
         var BTN = debugMenu.createDebugButton(txt, callback, args, cat, metadata);
@@ -377,13 +413,32 @@ var debugMenu = {
         debugMenu.inputUpdate = Interceptor.attach(GUIUpdate, {
             onLeave(retval) {
                 inputFieldUpdate(field);
-                debugMenu.inputFieldText = String.read(field.add(56));
+                var oldTxt = debugMenu.oldInp;
+                debugMenu.inputFieldText = String.read(field.add(56)).replace(/\0/g, '').trim();
+                debugMenu.oldInp = debugMenu.inputFieldText;
+                if (debugMenu.inputFieldText.toLowerCase() != oldTxt.toLowerCase() && debugMenu.inputFieldText.length > 0) {
+                    var input = debugMenu.inputFieldText;
+                    debugMenu.clearDebugMenu();
+                    var addedBTNS = [];
+                    for (let button of debugMenu.btnData) {
+                        if (button.name.toLowerCase().includes(input.toLowerCase()) && button.type == "btn" && !addedBTNS.includes(button.name)) {
+                            addedBTNS.push(button.name);
+                            debugMenu.createSearchResultBTN(button.name, button.callback, button.args, button.meta);
+                        }
+                    }
+                } else {
+                    if (debugMenu.inputFieldText.length <= 0 && oldTxt.length > 0) {
+                        debugMenu.init();
+                        debugMenu.clearDebugMenu();
+                        debugMenu.spawnDebugOptions();
+                    }
+                }
             }
         });
     },
     closeInputField() {
         GUI.stageRemoveChild(debugMenu.input);
-        debugMenu.inputUpdate.detach();
+        try { debugMenu.inputUpdate.detach(); } catch(e) { console.log("[* Error] Failed to detach the input updater! " + e) }
         if (debugMenu.inputFieldText != "") {
             debugMenu.inputFieldText = "";
             debugMenu.spawnDebugOptions();
@@ -395,8 +450,9 @@ var debugMenu = {
             GUI.scrollAreaRemoveChild(btn.instance[0]);
         }
         for (let btn of debugMenu.searchMenu) {
-            GUI.scrollAreaRemoveChild(btn.btn);
+            GUI.scrollAreaRemoveChild(btn.instance[0]);
         }
+        debugMenu.init()
     },
     closeDebugMenu() {
         debugMenu.scrollAreaUpdater.detach();
