@@ -31,6 +31,7 @@ var config = {
         heal: 1,
         trail: 1,
         repeat_area: 1,
+        reload: 1,
         unknown: 1
     },
     throwOpponentRange: 500, // Range of the throw_opponent type gadgets
@@ -144,7 +145,7 @@ const gadgetAbilities = {
             const closestEnemy = gameLogic.getClosestEnemy(characterServer)
             if (closestEnemy.isNull()) return;
             const POS = [logicGameObjectServerGetX(closestEnemy), logicGameObjectServerGetY(closestEnemy)]
-            gameLogic.spawnAOE(characterServer, "LuchadorMeteorSpawn", POS[0], POS[1]);
+            gameLogic.spawnAOE(characterServer, accessoryData.cusValue1, POS[0], POS[1]);
             setTimeout(function() {
                 gameLogic.spawnAOE(characterServer, "LuchadorMeteorExplosion", POS[0], POS[1]);
             }, 2500)
@@ -174,6 +175,10 @@ const gadgetAbilities = {
     repeat_area: function(characterServer) { // Doesn't work
         gameLogic.spawnAOE(characterServer, "CactusAccessoryExplosion")
     },
+    add_charge: function(characterServer, amount) {
+        var charges = characterServer.add(284).readPointer().readPointer().add(16).readInt()
+        characterServer.add(284).readPointer().readPointer().add(16).writeInt(charges + amount * 1000)
+    },
     unknown: function(characterServer) {
         gameLogic.kill(characterServer)
     }
@@ -202,10 +207,10 @@ const gameLogic = {
         return logicCharacterServerGetClosestEnemy(characterServer, 35, 0, 0, 0, 0, 0, 0, 0);
     },
     kill: function(characterServer) {
-        characterServer.add(144).writeS32(0)
+        characterServer.add(144).writeU32(0)
     },
     isAlive: function(characterServer) {
-        return true; // logicCharacterServerIsAlive(characterServer)
+        return true;
     }
 }
 
@@ -320,6 +325,12 @@ const LogicAccessory = {
                     gadgetEnabled = false;
                     canCoolDownGadget = true;
                     break;
+                case "reload":
+                    console.log("[* LogicAccessory::activateAccessory] Adding 2 ammo!");
+                    gadgetAbilities.add_charge(characterServer, 2);
+                    gadgetEnabled = false;
+                    canCoolDownGadget = true;
+                    break;
                 default:
                     console.log("[* LogicAccessory::activateAccessory] Unknown gadget type: '" + gadget + "'.")
                     if (config.executeFunctionOnUnknownGadget) gadgetAbilities.unknown(characterServer)
@@ -405,4 +416,3 @@ function fixAccessory() {
 }
 
 fixAccessory();
-
