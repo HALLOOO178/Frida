@@ -158,7 +158,7 @@ const gadgetAbilities = {
     item_area_trigger: function(characterServer) {
         gameLogic.spawnAOE(characterServer, "WeaponThrowerPullArea");
     },
-    throw_opponent: function(characterServer) { // This type is broken when used with el primo... 😭 I'll try to fix it edventually, I have other priorities right now
+    throw_opponent: function(characterServer) { // This type is broken when used with el primo... 😭 I'll try to fix it eventually, I have other priorities right now
         const closestEnemy = gameLogic.getClosestEnemy(characterServer)
         if (closestEnemy.isNull()) return;
         const activeAngle = logicCharacterServerGetMoveAngle(characterServer) * -1
